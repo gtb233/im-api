@@ -7,7 +7,7 @@
 
 namespace common\models;
 
-
+use yii;
 use common\components\Helper;
 use yii\db\ActiveRecord;
 
@@ -40,7 +40,7 @@ class ARUser extends ActiveRecord implements \yii\filters\RateLimitInterface
      */
     public function loadAllowance($request, $action){
         $method = $request->getIsPost() ? 'p':'g';
-        $timeStr = Helper::cache('yiiRatLimit')->get('yii'.$method.Helper::getIP());
+        $timeStr = yii::$app->cache->get('yii-RatLimit'.$method.Helper::getIP());
         if($timeStr){
             return explode('|',$timeStr);
         }else{
@@ -57,6 +57,6 @@ class ARUser extends ActiveRecord implements \yii\filters\RateLimitInterface
      */
     public function saveAllowance($request, $action, $allowance, $timestamp){
         $method = $request->getIsPost() ? 'p':'g';
-        Helper::cache('yiiRatLimit')->set('yii'.$method.Helper::getIP(),$allowance.'|'.$timestamp,600);
+        yii::$app->cache->set('yii-RatLimit'.$method.Helper::getIP(),$allowance.'|'.$timestamp,600);
     }
 }

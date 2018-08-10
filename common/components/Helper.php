@@ -102,7 +102,7 @@ class Helper
         $cache = \Yii::$app->cache;
         if (in_array(get_class($cache),['common\components\Cache','yii\redis\Cache'])) {
             //memcache
-            $cache->keyPrefix = $directory;
+            //$cache->keyPrefix = $directory;  //前缀不再另设。每个项目统一配置表设置
             return $cache;
         } else {
             //文件缓存

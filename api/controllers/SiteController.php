@@ -1,11 +1,10 @@
 <?php
+
 namespace api\controllers;
 
 use Yii;
 use yii\web\Controller;
-use yii\filters\VerbFilter;
-use yii\filters\AccessControl;
-use common\models\LoginForm;
+use yii\web\Response;
 
 /**
  * Site controller
@@ -13,54 +12,25 @@ use common\models\LoginForm;
 class SiteController extends Controller
 {
     /**
-     * {@inheritdoc}
-     */
-    public function behaviors()
-    {
-        return [
-            'access' => [
-                'class' => AccessControl::className(),
-                'rules' => [
-                    [
-                        'actions' => ['login', 'error'],
-                        'allow' => true,
-                    ],
-                    [
-                        'actions' => ['logout', 'index'],
-                        'allow' => true,
-                        'roles' => ['@'],
-                    ],
-                ],
-            ],
-            'verbs' => [
-                'class' => VerbFilter::className(),
-                'actions' => [
-                    'logout' => ['post'],
-                ],
-            ],
-        ];
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function actions()
-    {
-        return [
-            'error' => [
-                'class' => 'yii\web\ErrorAction',
-            ],
-        ];
-    }
-
-    /**
      * Displays homepage.
      *
      * @return string
      */
     public function actionIndex()
     {
-        return '';
+        return json_encode(['欢迎使用！']);
+    }
+
+    public function actionError()
+    {
+        \Yii::$app->response->format = Response::FORMAT_JSON;
+        $exception = \Yii::$app->getErrorHandler()->exception;
+        $baseData = substr($exception->getFile(),strlen(\Yii::$app->basePath)).'['.$exception->getLine().']';
+        return [
+            'status' =>$exception->statusCode,
+            'message' => $exception->getMessage(),
+            'data' => YII_DEBUG ? $exception->getTraceAsString() : $baseData
+        ];
     }
 
 }

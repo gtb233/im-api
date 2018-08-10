@@ -1,9 +1,6 @@
 <?php
 /**
- *
  * 速率限制
- *
- *  @author zhenjun_xu
  */
 
 namespace common\components;
@@ -27,15 +24,15 @@ class RateLimiter extends \yii\filters\RateLimiter
             return true;
         }
         $user = new ARUser();
-        $user->rateLimitPost = $this->rateLimitPost ? $this->rateLimitPost : [1,1]; //1秒内只能post提交一次
+        $user->rateLimitPost = $this->rateLimitPost ? $this->rateLimitPost : [5,1]; //1秒内只能post提交一次
         $user->rateLimitGet = $this->rateLimitGet ? $this->rateLimitGet : [100,60]; //60秒内最多只请get请求100次
-        $this->errorMessage = Yii::t('site','您每秒请求次数过多！');
+        $this->errorMessage = Yii::t('app','您每秒请求次数过多！');
         $request = $this->request ? : Yii::$app->getRequest();
         if ($request->isAjax && $request->isPost){
             $user->rateLimitPost = $user->rateLimitGet; // 如果是post的ajax请求，速率限制为get一样
         }
         if ($user instanceof RateLimitInterface) {
-            Yii::trace('Check rate limit', __METHOD__);
+            Yii::debug('Check rate limit', __METHOD__);
             $this->checkRateLimit(
                 $user,
                 $request,

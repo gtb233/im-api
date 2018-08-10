@@ -2,11 +2,11 @@
 
 return [
     'class' => 'yii\db\Connection',
-    'dsn' => 'mysql:host=localhost;dbname=yii2advanced',
+    'dsn' => 'mysql:host=localhost;dbname=im_db',
     'username' => 'root',
-    'password' => '',
+    'password' => 'root',
     'charset' => 'utf8',
-    'tablePrefix' => '',
+    'tablePrefix' => 'im_',
     #'enableSchemaCache' => true,#若数据库有变动要关闭更新以缓存
     #'schemaCacheDuration' => 24*3600,
     #'schemaCache' => 'cache',

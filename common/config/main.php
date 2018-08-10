@@ -29,5 +29,17 @@ return [
             'port' => 6379,
             'database' => 0,
         ],
+        'i18n' => [
+            'translations' => [
+                '*' => [
+                    'class' => 'yii\i18n\PhpMessageSource',
+                    'basePath' => '@common/messages',
+                    //'sourceLanguage' => 'en',
+                    'fileMap' => [
+                        'appCodeLib' => 'appCodeLib.php',
+                    ],
+                ]
+            ],
+        ],
     ],
 ];
