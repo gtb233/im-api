@@ -4,7 +4,7 @@ namespace api\modules\v1\controllers;
 
 use yii;
 use api\controllers\ApiController;
-use api\modules\v1\module;
+
 
 /**
  * Default controller for the `v1` module

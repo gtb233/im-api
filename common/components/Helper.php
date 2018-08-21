@@ -95,7 +95,7 @@ class Helper
     /**
      * 设定缓存路径
      * @param string $directory
-     * @return FileCache|MemCache
+     * @return Cache|fileCache
      */
     public static function cache($directory='') {
         /** @var FileCache|MemCache $cache */

@@ -103,7 +103,8 @@ return [
             "suffix" => "",
             "rules" => [
                 "<controller:\w+>/<id:\d+>"=>"<controller>/view",
-                "<controller:\w+>/<action:\w+>"=>"<controller>/<action>"
+                "<controller:\w+>/<action:\w+>"=>"<controller>/<action>",
+                "<module:\w+>/<controller:\w+>/<action:\w+>"=>"<module>/<controller>/<action>",
             ],
         ],
     ],

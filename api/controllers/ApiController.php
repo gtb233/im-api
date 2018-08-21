@@ -8,14 +8,20 @@
 
 namespace api\controllers;
 
+use yii;
 use api\components\Code;
+use api\components\RSA;
 use common\components\RateLimiter;
 use yii\base\Controller;
+use yii\base\Exception;
+use yii\web\ForbiddenHttpException;
 
 class ApiController extends Controller
 {
+    public $userinfo = []; //登录时记录用户信息
     protected $prefix = 'Yii-im';
     protected $expire = '86400';
+    protected $tokenLength = '20'; //登录时生成随机TOKEN长度
 
     public function behaviors()
     {
@@ -23,7 +29,7 @@ class ApiController extends Controller
         $behaviors['rateLimiter'] = [
             'class' => RateLimiter::class,
             'enableRateLimitHeaders' => false,
-            'rateLimitPost' => [2, 1], //一秒10次
+            'rateLimitPost' => [10, 1], //一秒10次
             'rateLimitGet' => [100, 60]
         ];
 
@@ -50,7 +56,8 @@ class ApiController extends Controller
             $result['resultData'] = $data;
         }
 
-        return ['response' => $result];
+        //return ['response' => $result ];
+        return $result;
     }
 
     public function _success($data = [], $type = '')
@@ -62,16 +69,322 @@ class ApiController extends Controller
         exit();
     }
 
+    /**
+     * @param string $resultCode 错误码
+     * @param string $resultDesc 提示消息, 默认使用错误提示配置表信息
+     * @param string $type
+     */
     public function _error($resultCode, $resultDesc = '', $type = '')
     {
         header('Content-Type: application/json');
-        $resultDate = json_encode($this->getResult($resultCode, Code::learnCode($resultCode), $type), JSON_UNESCAPED_UNICODE);
+        $resultDate = json_encode($this->getResult($resultCode, $resultDesc ?: Code::learnCode($resultCode), $type), JSON_UNESCAPED_UNICODE);
         // debug 记录其他信息
 
         echo $resultDate;
         exit();
     }
 
+    /**
+     * 解密方法
+     * @param array $request 请求的数据数组，POST/GET过来的数据
+     * @param array $requiredFields 必填字段数组
+     * @param array $decryptFields 需解密字段数组
+     * @param string $privateKey
+     * @throws Exception
+     * @return array
+     */
+    public function decrypt($request, $requiredFields = [], $decryptFields = [], $privateKey = '')
+    {
+        $result = array();
+        $rsa = new RSA();
+        if ($privateKey != '') $rsa->privateKey = $privateKey;
+        $this->params[] = 'systemType';           //默认给来源参数
+
+        /**
+         * 兼容支持 Content-Type:application/json
+         */
+        if (empty($request)) {
+            $request = json_decode(file_get_contents('php://input'), true);
+        }
+        if (YII_DEBUG) {
+            /**
+             * debug 开启状态，可以不加密字段
+             */
+            if (!empty($decryptFields)) {
+                $firstField = current($decryptFields);
+                if (isset($request[$firstField])) {
+                    $firstField = $request[$firstField];
+                } else {
+                    //取得有发送且为加密字段的值
+                    foreach ($decryptFields as $decryptField) {
+                        if (isset($request[$decryptField])) {
+                            $firstField = $request[$decryptField];
+                            break;
+                        }
+                    }
+                }
+                if (mb_strlen($firstField) != 256) {
+                    $decryptFields = false; //无法解密则无加密数据
+                }
+            }
+        }
+        foreach ($this->params as $field) {
+            if (isset($request[$field])) {
+                // 验证必填字段
+                if ($requiredFields && in_array($field, $requiredFields)) {
+                    if (!is_array($request[$field]) && trim($request[$field]) === '')
+                        throw new Exception($field . '提交数据不能为空');
+                }
+                // 解密字段值
+                if ($decryptFields && in_array($field, $decryptFields)) {
+                    // $result[$field] = $request[$field];
+                    $result[$field] = @$rsa->decrypt($request[$field]);
+                    if ($result[$field] === false) throw new Exception('数据解密失败');
+                    if ($requiredFields && in_array($field, $requiredFields)) {
+                        if ($result[$field] === '' || $result[$field] === false)
+                            throw new Exception($field . '是必填字段，解密后为空');
+                    }
+                } else
+                    $result[$field] = $request[$field];
+            } elseif (in_array($field, $requiredFields)) {
+                throw new Exception($field . '是必填字段！');
+            } else {
+                $result[$field] = null;     //非必填给默认值空
+                continue;
+            }
+        }
+
+        if (isset($result['systemType']) && !empty($result['systemType'])) $this->from = $result['systemType'];
+
+        return $this->magicQuotes($result);
+    }
+
+    /**
+     * 转义数据
+     * @param string|array $var
+     * @return string|array
+     */
+    public function magicQuotes(&$var)
+    {
+        if (!get_magic_quotes_gpc()) {
+            if (is_array($var)) {
+                foreach ($var as $k => $v)
+                    $var[$k] = $this->magicQuotes($v);
+            } else
+                $var = addslashes($var);
+        }
+        return $var;
+    }
+
+    /**
+     * 验证POST请求
+     * @throws Exception
+     * @author wanyun.liu <wanyun_liu@163.com>
+     */
+    public function checkPost()
+    {
+        if (!$this->isPost())
+            throw new ForbiddenHttpException("无效请求,必须是POST");
+    }
+
+    /**
+     * 判断是否post请求
+     * @return boolean
+     */
+    public function isPost()
+    {
+        return \Yii::$app->request->isPost;
+    }
+
+    /**
+     * 设置缓存
+     * @param string $key
+     * @param string $val
+     * @param int $expre
+     * @return boolean
+     */
+    protected function setCache($key, $val, $expre = 86400)
+    {
+        return Yii::$app->cache->set($key, $val, $expre);
+    }
+
+    /**
+     * 获取缓存
+     * @param string $key
+     * @return mixed
+     */
+    protected function getCache($key)
+    {
+        return Yii::$app->cache->get($key);
+    }
+
+    /**
+     * 删除缓存
+     * @param string $key
+     * @return boolean
+     */
+    protected function delCache($key)
+    {
+        return Yii::$app->cache->delete($key);
+    }
+
+    /**
+     * 生成随机串
+     * @param int $lenth
+     * @return string
+     */
+    public function randomStr($lenth = 6)
+    {
+        $hash = yii::$app->security->generateRandomString($lenth);
+        return $hash;
+    }
+
+    /**
+     * 获取接口返回参数
+     * @param null|string $key 参数
+     * @param null|string $default 如果参数不存在，返回指定默认数据
+     * @return array|mixed|null
+     */
+    public function getPost($key = null, $default = null)
+    {
+        $post = Yii::$app->request->post();
+        if (empty($key)) return $post;
+        if (isset($post[$key])) {
+            return $post[$key];
+        } else {
+            return $default;
+        }
+    }
+
+    /**
+     * @param $name
+     * @param $value
+     * @param int $expire_time
+     * @return mixed|\yii\web\Session
+     */
+    public function setSession($name, $value, $expire_time = 0)
+    {
+        $session = Yii::$app->session;
+        $name = $this->prefix . $name;
+        $data = [
+            'data' => $value,  //数据
+            'expire_time' => time() + $expire_time, //这里设置300秒过期
+        ];
+        $session[$name] = $data;
+        return $session;
+    }
+
+    /**
+     * @param $name
+     * @return array
+     */
+    public function getSession($name)
+    {
+        $session = Yii::$app->session;
+        $name = $this->prefix . $name;
+        return $session[$name];
+    }
+
+    /**
+     * @param $name
+     * @return mixed
+     */
+    public function removeSession($name = null)
+    {
+        $session = Yii::$app->session;
+        if ($name == null) {
+            $result = $session->destroy();
+        } else {
+            $name = $this->prefix . $name;
+            $result = $session->remove($name);
+        }
+        return $result;
+    }
+
+    /**
+     * 生成登录token
+     * @param $member 用户唯一标识
+     * @return string tokenId
+     */
+    public function createToken($member)
+    {
+        $tokenId = $this->randomStr($this->tokenLength);
+        $tokenIdKey = ':memberGw:' . $member . ':tokenId';
+        $memberIdKey = ':tokenId:' . $tokenId . ':memberGw';
+        // 检查token是否存在
+        $oldToken = $this->getCache($tokenId);
+
+        if (empty($oldToken)) {
+            // 清除token缓存
+            if ($cachedTokenId = $this->getCache($tokenIdKey)) {
+                $this->delCache($tokenIdKey);
+                $this->delCache(':tokenId:' . $cachedTokenId . ':memberGw');
+            }
+            // 设置token缓存
+            $this->setCache($tokenId, $tokenId);
+            $this->setCache($tokenIdKey, $tokenId);
+            $this->setCache($memberIdKey, $member);
+
+            return $tokenId;
+        }
+        return $this->createToken($member);
+    }
+
+    /**
+     * 删除token
+     * @param string $tokenId TOKEN
+     * @return bool
+     */
+    public function deleteToken($tokenId)
+    {
+        $username = ':tokenId:' . $tokenId . ':memberGw';
+        if ($memberId = $this->getCache($username)) {
+            $tokenIdKey = ':memberGw:' . $memberId . ':tokenId';
+            $this->delCache($tokenIdKey);
+        }
+        $this->delCache($username);
+        $this->delCache($tokenId);
+
+        //\Yii::$app->user->logout();
+        return true;
+    }
+
+    /**
+     * 检查登陆
+     * @param string $username 用户名称
+     * @param bool $checkLogin 是否检查登录状态
+     */
+    public function isLogion($token, $checkLogin = false)
+    {
+        $username = $this->isExistToken($token);
+
+        if ($username) {
+            //获取用户信息
+//            $userInfo = 。。
+//            if(!$userInfo) $this->_error('0000','获取用户信息失败');
+//            $this->userInfo = $userInfo;
+        }
+
+        if (!$username && $checkLogin) $this->_error('1001');
+
+        return $username;
+    }
+
+    /**
+     * 是否登录(是否存在TOKEN)
+     * @param $tokenId
+     * @return bool|mixed
+     */
+    public function isExistToken($tokenId)
+    {
+        $memberIdKey = ':tokenId:' . $tokenId . ':memberGw';
+        if ($username = $this->getCache($memberIdKey)) {
+            return $username;
+        }
+
+        //\Yii::$app->user->logout();
+        return false;
+    }
 
 }
 
